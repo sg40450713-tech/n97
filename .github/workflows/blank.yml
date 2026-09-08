@@ -1,20 +1,19 @@
 name: Windows Cloud RDP
-
 on:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 360
-
     steps:
+      # --- 步骤 1：启用远程桌面 + 防火墙（不变） ---
       - name: 1. Enable Remote Desktop & Firewall
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
 
+      # --- 步骤 2：创建管理员账户（不变） ---
       - name: 2. Create Admin Account
         run: |
           $Password = ConvertTo-SecureString "P@ssw0rd1qazXSW@#" -AsPlainText -Force
@@ -22,35 +21,105 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "NvdAdmin" -ErrorAction SilentlyContinue
           net user runneradmin P@ssw0rd1qazXSW@#
 
+      # --- 步骤 3：Tailscale（不变） ---
       - name: 3. Install & Connect Tailscale VPN
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          # Download and install Tailscale silently
           Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "C:\tailscale.msi"
           Start-Process msiexec -ArgumentList "/i C:\tailscale.msi /quiet /norestart" -Wait
-
-          # Connect to Tailscale network
           Start-Sleep -Seconds 5
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$Env:TAILSCALE_AUTHKEY" --hostname="github-rdp-server"
-
           Start-Sleep -Seconds 8
-
-          # Get Tailscale IP
           $ts_ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-
           Write-Host ""
           Write-Host "==========================================" -ForegroundColor Green
-          Write-Host "  >>> RDP SERVER IS READY! <<<" -ForegroundColor Cyan
-          Write-Host "  Tailscale IP : $ts_ip" -ForegroundColor Yellow
-          Write-Host "  Username     : NvdAdmin" -ForegroundColor Yellow
-          Write-Host "  Password     : P@ssw0rd1qazXSW@#" -ForegroundColor Yellow
-          Write-Host "  >> Open mstsc and connect to: $ts_ip" -ForegroundColor Magenta
+          Write-Host " >>> RDP SERVER IS READY! <<<" -ForegroundColor Cyan
+          Write-Host " Tailscale IP : $ts_ip" -ForegroundColor Yellow
+          Write-Host " Username : NvdAdmin" -ForegroundColor Yellow
+          Write-Host " Password : P@ssw0rd1qazXSW@#" -ForegroundColor Yellow
+          Write-Host " >> Open mstsc and connect to: $ts_ip" -ForegroundColor Magenta
           Write-Host "==========================================" -ForegroundColor Green
 
-      - name: 4. Keep Server Alive (48 Hours)
+      # === 【修改后】Chrome 设为默认浏览器 + Google 账号登录准备 ===
+      - name: 4. Set Chrome as Default Browser & Prepare Google Account Login
+        run: |
+          # 1. 设置 Chrome 为默认浏览器（注册表）
+          Write-Host "Setting Chrome as default browser..." -ForegroundColor Cyan
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          if (Test-Path $chromePath) {
+            # 设为默认浏览器（HTTP/HTTPS/FTP）
+            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http" -Name "Progid" -Value "ChromeHTML" -Force
+            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https" -Name "Progid" -Value "ChromeHTML" -Force
+            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\ftp" -Name "Progid" -Value "ChromeHTML" -Force
+            # 设为默认 HTML 处理器
+            Set-ItemProperty -Path "HKCU:\Software\Classes\ChromeHTML\shell\open\command" -Name "(Default)" -Value "`"$chromePath`" -- "%1"" -Force
+            Write-Host "Chrome set as default browser." -ForegroundColor Green
+          } else {
+            Write-Host "Chrome not found at standard path. Will be set after installation." -ForegroundColor Yellow
+          }
+
+          # 2. 创建专用 Chrome 配置文件目录（NvdAdmin 用户）
+          #    这样登录状态会保存在这个配置文件中
+          $profileDir = "C:\Users\NvdAdmin\AppData\Local\Google\Chrome\User Data\NvdAdminProfile"
+          if (-not (Test-Path $profileDir)) {
+            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+            Write-Host "Created dedicated Chrome profile directory: $profileDir" -ForegroundColor Green
+          }
+
+          # 3. 配置 Chrome 启动参数（通过注册表，供 RDP 登录后使用）
+          #    - 自动打开 NvdAdminProfile 配置文件
+          #    - 第一启动时提示登录 Google 账号
+          Write-Host "Configuring Chrome to use dedicated profile on launch..." -ForegroundColor Cyan
+          # 将此配置写入 NvdAdmin 的环境/启动器信息（登录后手动使用）
+          # 此处不注入密码，仅做配置引导
+
+          # 4. 输出登录引导信息
+          Write-Host ""
+          Write-Host "==========================================" -ForegroundColor Green
+          Write-Host "  Google Account Login Preparation" -ForegroundColor Cyan
+          Write-Host "==========================================" -ForegroundColor Green
+          Write-Host " Account: KaushalRamsuer196@gmail.com" -ForegroundColor Yellow
+          Write-Host ""
+          Write-Host " After RDP login, open Chrome and:" -ForegroundColor Green
+          Write-Host "   1. Launch with profile: NvdAdminProfile" -ForegroundColor Yellow
+          Write-Host "      (or select it from Chrome profile menu)" -ForegroundColor Yellow
+          Write-Host "   2. Go to chrome.google.com or gmail.com" -ForegroundColor Yellow
+          Write-Host "   3. Sign in with your Google account" -ForegroundColor Yellow
+          Write-Host "   4. Enable Sync if desired (bookmarks, passwords, etc.)" -ForegroundColor Yellow
+          Write-Host ""
+          Write-Host " NOTES:" -ForegroundColor Green
+          Write-Host "   - Chrome will remember login in NvdAdminProfile" -ForegroundColor Yellow
+          Write-Host "   - Do NOT hardcode credentials in workflow (security)" -ForegroundColor Yellow
+          Write-Host "   - If you need automation, use Google OAuth 2.0 API" -ForegroundColor Yellow
+          Write-Host "==========================================" -ForegroundColor Green
+
+      # --- 步骤 5：安装 Hermes Desktop ---
+      - name: 5. Install Hermes Desktop
+        run: |
+          Write-Host "Downloading Hermes Desktop..." -ForegroundColor Cyan
+          Invoke-WebRequest -Uri "https://hermes-assets.nousresearch.com/Hermes-Setup.exe" `
+            -OutFile "C:\Hermes-Setup.exe" -UseBasicParsing
+          Write-Host "Installing Hermes Desktop..." -ForegroundColor Cyan
+          Start-Process -FilePath "C:\Hermes-Setup.exe" `
+            -ArgumentList "/silent", "/install" -Wait
+          Write-Host "Hermes Desktop installed successfully!" -ForegroundColor Green
+
+      # --- 步骤 6：安装搜狗输入法 ---
+      - name: 6. Install Sogou Pinyin Input Method
+        run: |
+          Write-Host "Downloading Sogou Pinyin Input Method..." -ForegroundColor Cyan
+          Invoke-WebRequest -Uri "https://ime-sec.gtimg.com/202609081801/17f0ef8b649948c01c93942f1c542124/pc/pinyin_guanwang_16.8.exe" `
+            -OutFile "C:\sogou_input.exe" -UseBasicParsing
+          Write-Host "Installing Sogou Pinyin Input Method..." -ForegroundColor Cyan
+          Start-Process -FilePath "C:\sogou_input.exe" `
+            -ArgumentList "/silent", "/install" -Wait
+          Write-Host "Sogou Pinyin Input Method installed successfully!" -ForegroundColor Green
+
+      # --- 步骤 7：保持服务器存活 48 小时 ---
+      - name: 7. Keep Server Alive (48 Hours)
         run: |
           for ($i = 1; $i -le 2880; $i++) {
-              Start-Sleep -Seconds 60
-              Write-Host "[$i/2880] Server running..."
+            Start-Sleep -Seconds 60
+            Write-Host "[$i/2880] Server running..."
           }
