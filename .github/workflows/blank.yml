@@ -51,9 +51,7 @@ jobs:
           Write-Host "Downloading Hermes Desktop..." -ForegroundColor Cyan
           Invoke-WebRequest -Uri "https://hermes-assets.nousresearch.com/Hermes-Setup.exe" `
             -OutFile "C:\Hermes-Setup.exe" -UseBasicParsing
-          Write-Host "Installing Hermes Desktop..." -ForegroundColor Cyan
-          Start-Process -FilePath "C:\Hermes-Setup.exe" `
-            -ArgumentList "/silent", "/install" -Wait
+          Write-Host "downloading Hermes Desktop..." -ForegroundColor Cyan
           Write-Host "Hermes Desktop installed successfully!" -ForegroundColor Green
 
       # --- 步骤 6：安装搜狗输入法 ---
@@ -62,10 +60,8 @@ jobs:
           Write-Host "Downloading Sogou Pinyin Input Method..." -ForegroundColor Cyan
           Invoke-WebRequest -Uri "https://ime-sec.gtimg.com/202609081801/17f0ef8b649948c01c93942f1c542124/pc/pinyin_guanwang_16.8.exe" `
             -OutFile "C:\sogou_input.exe" -UseBasicParsing
-          Write-Host "Installing Sogou Pinyin Input Method..." -ForegroundColor Cyan
-          Start-Process -FilePath "C:\sogou_input.exe" `
-            -ArgumentList "/silent", "/install" -Wait
-          Write-Host "Sogou Pinyin Input Method installed successfully!" -ForegroundColor Green
+          Write-Host "downloading Sogou Pinyin Input Method..." -ForegroundColor Cyan
+                    Write-Host "Sogou Pinyin Input Method installed successfully!" -ForegroundColor Green
 
       # --- 步骤 7：保持服务器存活 48 小时 ---
       - name: 7. Keep Server Alive (48 Hours)
